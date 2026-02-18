@@ -1,52 +1,40 @@
 // pages/api/search.js
-// Cette API est appelée quand l'utilisateur clique sur "Comparer"
+// Recherche : 🇩🇪 Toute l'Allemagne vs 🇫🇷 Ville + rayon
 
 export default async function handler(req, res) {
-  // Vérifie que c'est une requête POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Méthode non autorisée' });
   }
 
-  const { brand, model, yearMin, yearMax, kmMax, fuel, priceMax } = req.body;
+  const { brand, model, yearMin, yearMax, kmMax, fuel, priceMax, city, distance, cityData } = req.body;
 
-  // Récupère le token Apify depuis les variables d'environnement
   const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
 
   // Si pas de token, utilise des données de démo
   if (!APIFY_TOKEN) {
     console.log('⚠️ Pas de token Apify - Mode démo activé');
-    return res.status(200).json(getDemoData(brand, model));
+    return res.status(200).json(getDemoData(brand, model, city, distance));
   }
 
   try {
     // ========================================
-    // RECHERCHE SUR MOBILE.DE (Allemagne)
+    // 🇩🇪 RECHERCHE MOBILE.DE - TOUTE L'ALLEMAGNE
     // ========================================
     
-    // Construire l'URL de recherche mobile.de
     const mobileDeUrl = buildMobileDeUrl({ brand, model, yearMin, yearMax, kmMax, fuel, priceMax });
-    
-    console.log('🇩🇪 Recherche mobile.de:', mobileDeUrl);
+    console.log('🇩🇪 Recherche mobile.de (nationale):', mobileDeUrl);
 
-    // Appeler Apify pour scraper mobile.de
     const mobileDeResults = await callApifyScraper(APIFY_TOKEN, mobileDeUrl, 'mobile.de');
 
     // ========================================
-    // RECHERCHE SUR LEBONCOIN (France)
+    // 🇫🇷 RECHERCHE LEBONCOIN - VILLE + RAYON
     // ========================================
     
-    // Construire l'URL de recherche leboncoin
-    const leboncoinUrl = buildLeboncoinUrl({ brand, model, yearMin, yearMax, kmMax, fuel, priceMax });
-    
-    console.log('🇫🇷 Recherche leboncoin:', leboncoinUrl);
+    const leboncoinUrl = buildLeboncoinUrl({ brand, model, yearMin, yearMax, kmMax, fuel, priceMax, city, distance, cityData });
+    console.log(`🇫🇷 Recherche leboncoin (${city} +${distance}km):`, leboncoinUrl);
 
-    // Appeler Apify pour scraper leboncoin
     const leboncoinResults = await callApifyScraper(APIFY_TOKEN, leboncoinUrl, 'leboncoin');
 
-    // ========================================
-    // RETOURNER LES RÉSULTATS
-    // ========================================
-    
     return res.status(200).json({
       de: mobileDeResults,
       fr: leboncoinResults
@@ -59,45 +47,102 @@ export default async function handler(req, res) {
 }
 
 // ========================================
-// FONCTIONS UTILITAIRES
+// CONSTRUIRE L'URL MOBILE.DE (NATIONALE)
 // ========================================
 
-// Construire l'URL mobile.de
 function buildMobileDeUrl({ brand, model, yearMin, yearMax, kmMax, fuel, priceMax }) {
+  const baseUrl = 'https://suchen.mobile.de/fahrzeuge/search.html';
+  
   const params = new URLSearchParams({
     damageUnrepaired: 'NO_DAMAGE_UNREPAIRED',
     isSearchRequest: 'true',
-    maxMileage: kmMax,
-    maxPrice: priceMax,
+    maxMileage: kmMax.toString(),
+    maxPrice: priceMax.toString(),
     minFirstRegistrationDate: `${yearMin}-01-01`,
     maxFirstRegistrationDate: `${yearMax}-12-31`,
-    scopeId: 'C', // Voitures
-    sortOption: 'sortby:relevance'
+    scopeId: 'C',
+    sfmr: 'false',
+    sortOption: 'sortby:price',
+    searchId: Date.now().toString()
   });
 
-  // Ajouter la marque et le modèle
-  if (brand) params.append('makeModelVariant1.makeId', getBrandIdMobileDe(brand));
-  
-  return `https://suchen.mobile.de/fahrzeuge/search.html?${params.toString()}`;
+  // Ajouter le carburant si spécifié
+  if (fuel && fuel !== 'Tous') {
+    const fuelMap = {
+      'Diesel': 'D',
+      'Essence': 'B',
+      'Hybride': 'H',
+      'Électrique': 'E'
+    };
+    if (fuelMap[fuel]) {
+      params.append('ft', fuelMap[fuel]);
+    }
+  }
+
+  // Ajouter la marque
+  const brandId = getBrandIdMobileDe(brand);
+  if (brandId) {
+    params.append('makeModelVariant1.makeId', brandId);
+  }
+
+  // Note: PAS de paramètre de localisation = recherche nationale
+
+  return `${baseUrl}?${params.toString()}`;
 }
 
-// Construire l'URL leboncoin
-function buildLeboncoinUrl({ brand, model, yearMin, yearMax, kmMax, fuel, priceMax }) {
+// ========================================
+// CONSTRUIRE L'URL LEBONCOIN (LOCALE)
+// ========================================
+
+function buildLeboncoinUrl({ brand, model, yearMin, yearMax, kmMax, fuel, priceMax, city, distance, cityData }) {
+  const baseUrl = 'https://www.leboncoin.fr/recherche';
+  
   const searchText = `${brand} ${model}`.trim();
   
   const params = new URLSearchParams({
-    category: '2', // Voitures
+    category: '2', // Catégorie voitures
     text: searchText,
-    mileage_max: kmMax,
-    price_max: priceMax,
-    regdate_min: yearMin,
-    regdate_max: yearMax
+    mileage_max: kmMax.toString(),
+    price_max: priceMax.toString(),
+    regdate_min: yearMin.toString(),
+    regdate_max: yearMax.toString(),
+    sort: 'price',
+    order: 'asc'
   });
 
-  return `https://www.leboncoin.fr/recherche?${params.toString()}`;
+  // Ajouter le carburant si spécifié
+  if (fuel && fuel !== 'Tous') {
+    const fuelMap = {
+      'Diesel': 'diesel',
+      'Essence': 'essence', 
+      'Hybride': 'hybrid',
+      'Électrique': 'electric'
+    };
+    if (fuelMap[fuel]) {
+      params.append('fuel', fuelMap[fuel]);
+    }
+  }
+
+  // === LOCALISATION FRANÇAISE ===
+  // Ajouter les coordonnées de la ville
+  if (cityData && cityData.lat && cityData.lng) {
+    params.append('lat', cityData.lat.toString());
+    params.append('lng', cityData.lng.toString());
+    params.append('radius', (distance * 1000).toString()); // Leboncoin utilise les mètres
+  }
+
+  // Alternative : utiliser le code postal pour certaines villes
+  if (cityData && cityData.postalCode) {
+    params.append('locations', cityData.postalCode);
+  }
+
+  return `${baseUrl}?${params.toString()}`;
 }
 
-// Mapping des marques vers les IDs mobile.de
+// ========================================
+// MAPPING MARQUES MOBILE.DE
+// ========================================
+
 function getBrandIdMobileDe(brand) {
   const brandIds = {
     'Renault': '20200',
@@ -115,14 +160,20 @@ function getBrandIdMobileDe(brand) {
     'Hyundai': '11000',
     'Kia': '12100',
     'Skoda': '22500',
-    'Seat': '22000'
+    'Seat': '22000',
+    'Dacia': '6600',
+    'Volvo': '25100',
+    'Porsche': '19300',
+    'Mini': '17500'
   };
   return brandIds[brand] || '';
 }
 
-// Appeler le scraper Apify
+// ========================================
+// APPELER LE SCRAPER APIFY
+// ========================================
+
 async function callApifyScraper(token, url, source) {
-  // Utilise l'Actor "apify/web-scraper" ou un actor spécifique
   const actorId = 'apify~web-scraper';
   
   const response = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
@@ -131,7 +182,6 @@ async function callApifyScraper(token, url, source) {
     body: JSON.stringify({
       startUrls: [{ url }],
       maxPagesPerCrawl: 1,
-      // Configuration du scraper selon la source
       pageFunction: getPageFunction(source)
     })
   });
@@ -142,11 +192,9 @@ async function callApifyScraper(token, url, source) {
 
   const runData = await response.json();
   
-  // Attendre que le run soit terminé et récupérer les résultats
-  // Note: En production, tu voudrais utiliser un webhook ou polling
-  await new Promise(resolve => setTimeout(resolve, 10000)); // Attente simplifiée
+  // Attendre les résultats
+  await new Promise(resolve => setTimeout(resolve, 10000));
 
-  // Récupérer les résultats du dataset
   const datasetResponse = await fetch(
     `https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${token}`
   );
@@ -165,7 +213,10 @@ async function callApifyScraper(token, url, source) {
   }));
 }
 
-// Page function pour le scraper (à adapter selon le site)
+// ========================================
+// FONCTIONS DE SCRAPING
+// ========================================
+
 function getPageFunction(source) {
   if (source === 'mobile.de') {
     return `
@@ -190,7 +241,6 @@ function getPageFunction(source) {
     `;
   }
   
-  // leboncoin
   return `
     async function pageFunction(context) {
       const { $, request } = context;
@@ -214,8 +264,26 @@ function getPageFunction(source) {
 // DONNÉES DE DÉMONSTRATION
 // ========================================
 
-function getDemoData(brand, model) {
-  // Données fictives pour tester sans Apify
+function getDemoData(brand, model, city, distance) {
+  // Villes allemandes pour la démo (recherche nationale)
+  const germanCities = ['Berlin', 'Munich', 'Hamburg', 'Francfort', 'Stuttgart', 'Düsseldorf', 'Cologne', 'Leipzig'];
+  
+  // Villes françaises autour de la ville sélectionnée (simulé)
+  const nearbyFrenchCities = {
+    'Strasbourg': ['Strasbourg', 'Colmar', 'Mulhouse', 'Haguenau', 'Sélestat'],
+    'Paris': ['Paris', 'Versailles', 'Saint-Denis', 'Créteil', 'Nanterre'],
+    'Lyon': ['Lyon', 'Villeurbanne', 'Vénissieux', 'Saint-Étienne', 'Bron'],
+    'Marseille': ['Marseille', 'Aix-en-Provence', 'Aubagne', 'Martigues', 'Salon-de-Provence'],
+    'Toulouse': ['Toulouse', 'Blagnac', 'Colomiers', 'Tournefeuille', 'Muret'],
+    'Bordeaux': ['Bordeaux', 'Mérignac', 'Pessac', 'Talence', 'Libourne'],
+    'Lille': ['Lille', 'Roubaix', 'Tourcoing', 'Villeneuve-d\'Ascq', 'Dunkerque'],
+    'Nice': ['Nice', 'Cannes', 'Antibes', 'Grasse', 'Menton'],
+    'Nantes': ['Nantes', 'Saint-Nazaire', 'Saint-Herblain', 'Rezé', 'La Roche-sur-Yon'],
+    'Montpellier': ['Montpellier', 'Nîmes', 'Béziers', 'Sète', 'Lunel']
+  };
+
+  const frCities = nearbyFrenchCities[city] || [city, 'Ville proche 1', 'Ville proche 2'];
+
   return {
     de: [
       { 
@@ -225,7 +293,7 @@ function getDemoData(brand, model) {
         km: 78000, 
         fuel: 'Diesel', 
         price: 3200, 
-        city: 'Berlin', 
+        city: germanCities[Math.floor(Math.random() * germanCities.length)],
         url: 'https://www.mobile.de' 
       },
       { 
@@ -235,7 +303,7 @@ function getDemoData(brand, model) {
         km: 65000, 
         fuel: 'Diesel', 
         price: 4100, 
-        city: 'Munich', 
+        city: germanCities[Math.floor(Math.random() * germanCities.length)],
         url: 'https://www.mobile.de' 
       },
       { 
@@ -245,7 +313,17 @@ function getDemoData(brand, model) {
         km: 92000, 
         fuel: 'Diesel', 
         price: 2800, 
-        city: 'Hamburg', 
+        city: germanCities[Math.floor(Math.random() * germanCities.length)],
+        url: 'https://www.mobile.de' 
+      },
+      { 
+        id: 'de4', 
+        title: `${brand} ${model}`, 
+        year: 2021, 
+        km: 45000, 
+        fuel: 'Diesel', 
+        price: 5200, 
+        city: germanCities[Math.floor(Math.random() * germanCities.length)],
         url: 'https://www.mobile.de' 
       },
     ],
@@ -257,7 +335,7 @@ function getDemoData(brand, model) {
         km: 82000, 
         fuel: 'Diesel', 
         price: 5900, 
-        city: 'Paris', 
+        city: frCities[0],
         url: 'https://www.leboncoin.fr' 
       },
       { 
@@ -267,7 +345,7 @@ function getDemoData(brand, model) {
         km: 71000, 
         fuel: 'Diesel', 
         price: 6800, 
-        city: 'Lyon', 
+        city: frCities[1] || frCities[0],
         url: 'https://www.leboncoin.fr' 
       },
       { 
@@ -277,7 +355,7 @@ function getDemoData(brand, model) {
         km: 88000, 
         fuel: 'Diesel', 
         price: 5200, 
-        city: 'Marseille', 
+        city: frCities[2] || frCities[0],
         url: 'https://www.leboncoin.fr' 
       },
     ]
