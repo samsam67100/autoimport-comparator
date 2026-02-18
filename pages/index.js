@@ -2,8 +2,50 @@ import { useState } from 'react';
 import Head from 'next/head';
 
 // Liste des marques disponibles
-const brands = ['Renault', 'Peugeot', 'Citroën', 'Volkswagen', 'BMW', 'Mercedes', 'Audi', 'Ford', 'Opel', 'Fiat', 'Toyota', 'Nissan', 'Hyundai', 'Kia', 'Skoda', 'Seat'];
+const brands = ['Renault', 'Peugeot', 'Citroën', 'Volkswagen', 'BMW', 'Mercedes', 'Audi', 'Ford', 'Opel', 'Fiat', 'Toyota', 'Nissan', 'Hyundai', 'Kia', 'Skoda', 'Seat', 'Dacia', 'Volvo', 'Porsche', 'Mini'];
 const fuels = ['Tous', 'Diesel', 'Essence', 'Hybride', 'Électrique'];
+const distances = [
+  { value: 0, label: 'Ville uniquement' },
+  { value: 50, label: '+ 50 km' },
+  { value: 100, label: '+ 100 km' },
+  { value: 150, label: '+ 150 km' },
+  { value: 200, label: '+ 200 km' },
+  { value: 300, label: '+ 300 km' },
+];
+
+// Villes françaises principales avec leurs codes postaux
+const frenchCities = [
+  { name: 'Paris', postalCode: '75000', lat: 48.8566, lng: 2.3522 },
+  { name: 'Lyon', postalCode: '69000', lat: 45.764, lng: 4.8357 },
+  { name: 'Marseille', postalCode: '13000', lat: 43.2965, lng: 5.3698 },
+  { name: 'Toulouse', postalCode: '31000', lat: 43.6047, lng: 1.4442 },
+  { name: 'Nice', postalCode: '06000', lat: 43.7102, lng: 7.262 },
+  { name: 'Nantes', postalCode: '44000', lat: 47.2184, lng: -1.5536 },
+  { name: 'Strasbourg', postalCode: '67000', lat: 48.5734, lng: 7.7521 },
+  { name: 'Montpellier', postalCode: '34000', lat: 43.6108, lng: 3.8767 },
+  { name: 'Bordeaux', postalCode: '33000', lat: 44.8378, lng: -0.5792 },
+  { name: 'Lille', postalCode: '59000', lat: 50.6292, lng: 3.0573 },
+  { name: 'Rennes', postalCode: '35000', lat: 48.1173, lng: -1.6778 },
+  { name: 'Reims', postalCode: '51100', lat: 49.2583, lng: 4.0317 },
+  { name: 'Le Havre', postalCode: '76600', lat: 49.4944, lng: 0.1079 },
+  { name: 'Dijon', postalCode: '21000', lat: 47.322, lng: 5.0415 },
+  { name: 'Grenoble', postalCode: '38000', lat: 45.1885, lng: 5.7245 },
+  { name: 'Angers', postalCode: '49000', lat: 47.4784, lng: -0.5632 },
+  { name: 'Clermont-Ferrand', postalCode: '63000', lat: 45.7772, lng: 3.087 },
+  { name: 'Metz', postalCode: '57000', lat: 49.1193, lng: 6.1757 },
+  { name: 'Nancy', postalCode: '54000', lat: 48.6921, lng: 6.1844 },
+  { name: 'Mulhouse', postalCode: '68100', lat: 47.7508, lng: 7.3359 },
+  { name: 'Rouen', postalCode: '76000', lat: 49.4432, lng: 1.0999 },
+  { name: 'Caen', postalCode: '14000', lat: 49.1829, lng: -0.3707 },
+  { name: 'Orléans', postalCode: '45000', lat: 47.9029, lng: 1.909 },
+  { name: 'Tours', postalCode: '37000', lat: 47.3941, lng: 0.6848 },
+  { name: 'Limoges', postalCode: '87000', lat: 45.8336, lng: 1.2611 },
+  { name: 'Perpignan', postalCode: '66000', lat: 42.6986, lng: 2.8956 },
+  { name: 'Besançon', postalCode: '25000', lat: 47.2378, lng: 6.0241 },
+  { name: 'Brest', postalCode: '29200', lat: 48.3904, lng: -4.4861 },
+  { name: 'Amiens', postalCode: '80000', lat: 49.894, lng: 2.2958 },
+  { name: 'Poitiers', postalCode: '86000', lat: 46.5802, lng: 0.3404 },
+];
 
 export default function Home() {
   // État du formulaire de recherche
@@ -14,7 +56,10 @@ export default function Home() {
     yearMax: 2024,
     kmMax: 150000,
     fuel: 'Tous',
-    priceMax: 15000
+    priceMax: 15000,
+    // Nouveaux paramètres de localisation
+    city: 'Strasbourg',
+    distance: 200
   });
   
   const [isLoading, setIsLoading] = useState(false);
@@ -29,11 +74,17 @@ export default function Home() {
     setResults(null);
     setComparisons([]);
 
+    // Trouver les coordonnées de la ville sélectionnée
+    const selectedCity = frenchCities.find(c => c.name === searchParams.city);
+
     try {
       const response = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(searchParams)
+        body: JSON.stringify({
+          ...searchParams,
+          cityData: selectedCity
+        })
       });
 
       if (!response.ok) throw new Error('Erreur de recherche');
@@ -98,7 +149,7 @@ export default function Home() {
               <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 'bold' }}>
                 Auto<span style={{ color: '#22c55e' }}>Import</span>
               </h1>
-              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Comparez 🇩🇪 Allemagne vs 🇫🇷 France en temps réel</p>
+              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Comparez 🇩🇪 Toute l'Allemagne vs 🇫🇷 Votre région</p>
             </div>
           </div>
         </header>
@@ -112,96 +163,162 @@ export default function Home() {
               Trouvez les <span style={{ color: '#22c55e' }}>vraies bonnes affaires</span>
             </h2>
             <p style={{ color: '#94a3b8', maxWidth: '600px', margin: '0 auto' }}>
-              Recherchez un véhicule et voyez instantanément si l'Allemagne offre un meilleur prix.
+              Comparez les prix de toute l'Allemagne avec les annonces autour de chez vous.
             </p>
           </div>
 
           {/* Formulaire de recherche */}
           <div style={{ backgroundColor: '#1e293b', borderRadius: '24px', padding: '32px', border: '1px solid #334155', marginBottom: '32px' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', fontSize: '18px' }}>
-              🔍 Votre recherche
-            </h3>
+            
+            {/* Section Véhicule */}
+            <div style={{ marginBottom: '32px' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', fontSize: '16px', color: '#94a3b8' }}>
+                🚗 Véhicule recherché
+              </h3>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-              
-              {/* Marque */}
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Marque</label>
-                <select
-                  value={searchParams.brand}
-                  onChange={(e) => setSearchParams({...searchParams, brand: e.target.value})}
-                  style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px' }}
-                >
-                  {brands.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+                
+                {/* Marque */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Marque</label>
+                  <select
+                    value={searchParams.brand}
+                    onChange={(e) => setSearchParams({...searchParams, brand: e.target.value})}
+                    style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px' }}
+                  >
+                    {brands.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+
+                {/* Modèle */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Modèle</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Kangoo, Golf..."
+                    value={searchParams.model}
+                    onChange={(e) => setSearchParams({...searchParams, model: e.target.value})}
+                    style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* Carburant */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Carburant</label>
+                  <select
+                    value={searchParams.fuel}
+                    onChange={(e) => setSearchParams({...searchParams, fuel: e.target.value})}
+                    style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px' }}
+                  >
+                    {fuels.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+
+                {/* Prix max */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Prix max (€)</label>
+                  <input
+                    type="number"
+                    value={searchParams.priceMax}
+                    onChange={(e) => setSearchParams({...searchParams, priceMax: parseInt(e.target.value)})}
+                    style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* Année min */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Année min</label>
+                  <input
+                    type="number"
+                    value={searchParams.yearMin}
+                    onChange={(e) => setSearchParams({...searchParams, yearMin: parseInt(e.target.value)})}
+                    style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* Année max */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Année max</label>
+                  <input
+                    type="number"
+                    value={searchParams.yearMax}
+                    onChange={(e) => setSearchParams({...searchParams, yearMax: parseInt(e.target.value)})}
+                    style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* Km max */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Km max</label>
+                  <input
+                    type="number"
+                    value={searchParams.kmMax}
+                    onChange={(e) => setSearchParams({...searchParams, kmMax: parseInt(e.target.value)})}
+                    style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
+                  />
+                </div>
               </div>
+            </div>
 
-              {/* Modèle */}
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Modèle</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Kangoo, Golf..."
-                  value={searchParams.model}
-                  onChange={(e) => setSearchParams({...searchParams, model: e.target.value})}
-                  style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
-                />
-              </div>
+            {/* Section Localisation */}
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', fontSize: '16px' }}>
+                📍 Zone de comparaison
+              </h3>
 
-              {/* Carburant */}
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Carburant</label>
-                <select
-                  value={searchParams.fuel}
-                  onChange={(e) => setSearchParams({...searchParams, fuel: e.target.value})}
-                  style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px' }}
-                >
-                  {fuels.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
-              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                
+                {/* Allemagne */}
+                <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #334155' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '24px' }}>🇩🇪</span>
+                    <span style={{ fontWeight: '600' }}>Allemagne</span>
+                  </div>
+                  <div style={{ backgroundColor: '#22c55e20', border: '1px solid #22c55e40', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                    <span style={{ color: '#22c55e', fontWeight: '500' }}>🌍 Tout le pays</span>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                      Recherche nationale pour trouver les meilleurs prix
+                    </p>
+                  </div>
+                </div>
 
-              {/* Prix max */}
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Prix max (€)</label>
-                <input
-                  type="number"
-                  value={searchParams.priceMax}
-                  onChange={(e) => setSearchParams({...searchParams, priceMax: parseInt(e.target.value)})}
-                  style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
-                />
-              </div>
+                {/* France */}
+                <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '20px', border: '1px solid #334155' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '24px' }}>🇫🇷</span>
+                    <span style={{ fontWeight: '600' }}>France</span>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {/* Ville */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Votre ville</label>
+                      <select
+                        value={searchParams.city}
+                        onChange={(e) => setSearchParams({...searchParams, city: e.target.value})}
+                        style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '8px', padding: '10px 12px', color: 'white', fontSize: '14px' }}
+                      >
+                        {frenchCities.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                      </select>
+                    </div>
 
-              {/* Année min */}
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Année min</label>
-                <input
-                  type="number"
-                  value={searchParams.yearMin}
-                  onChange={(e) => setSearchParams({...searchParams, yearMin: parseInt(e.target.value)})}
-                  style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              {/* Année max */}
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Année max</label>
-                <input
-                  type="number"
-                  value={searchParams.yearMax}
-                  onChange={(e) => setSearchParams({...searchParams, yearMax: parseInt(e.target.value)})}
-                  style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              {/* Km max */}
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>Km max</label>
-                <input
-                  type="number"
-                  value={searchParams.kmMax}
-                  onChange={(e) => setSearchParams({...searchParams, kmMax: parseInt(e.target.value)})}
-                  style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
-                />
+                    {/* Rayon */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Rayon</label>
+                      <select
+                        value={searchParams.distance}
+                        onChange={(e) => setSearchParams({...searchParams, distance: parseInt(e.target.value)})}
+                        style={{ width: '100%', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '8px', padding: '10px 12px', color: 'white', fontSize: '14px' }}
+                      >
+                        {distances.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <p style={{ margin: '12px 0 0 0', fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>
+                    📍 {searchParams.city} {searchParams.distance > 0 ? `+ ${searchParams.distance} km` : ''}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -226,9 +343,9 @@ export default function Home() {
               }}
             >
               {isLoading ? (
-                <>⏳ Recherche en cours sur mobile.de et leboncoin...</>
+                <>⏳ Recherche en cours...</>
               ) : (
-                <>🔍 Comparer les prix Allemagne / France</>
+                <>🔍 Comparer : 🇩🇪 Toute l'Allemagne vs 🇫🇷 {searchParams.city} +{searchParams.distance}km</>
               )}
             </button>
           </div>
@@ -252,11 +369,11 @@ export default function Home() {
                 <div style={{ display: 'flex', gap: '32px' }}>
                   <div style={{ textAlign: 'center' }}>
                     <p style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{results.de.length}</p>
-                    <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Annonces 🇩🇪</p>
+                    <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>🇩🇪 Toute l'Allemagne</p>
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <p style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{results.fr.length}</p>
-                    <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Annonces 🇫🇷</p>
+                    <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>🇫🇷 {searchParams.city} +{searchParams.distance}km</p>
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#22c55e', margin: 0 }}>{comparisons.length}</p>
@@ -264,7 +381,7 @@ export default function Home() {
                   </div>
                 </div>
                 <p style={{ fontSize: '14px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                  ℹ️ Seules les annonces où l'Allemagne est moins chère sont affichées
+                  ℹ️ Affiche uniquement si l'Allemagne est moins chère
                 </p>
               </div>
 
@@ -366,7 +483,7 @@ export default function Home() {
                             rel="noopener noreferrer"
                             style={{ display: 'block', width: '100%', backgroundColor: '#334155', color: 'white', fontWeight: '600', padding: '12px', borderRadius: '12px', textAlign: 'center', textDecoration: 'none', border: '1px solid #475569', boxSizing: 'border-box', marginTop: '68px' }}
                           >
-                            Comparer sur leboncoin ↗
+                            Voir sur leboncoin ↗
                           </a>
                         </div>
                       </div>
@@ -380,7 +497,7 @@ export default function Home() {
                   </div>
                   <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '8px' }}>Pas de bonne affaire trouvée</h3>
                   <p style={{ color: '#94a3b8', maxWidth: '400px', margin: '0 auto' }}>
-                    Pour cette recherche, les prix en France sont similaires ou inférieurs à l'Allemagne. Essayez avec d'autres critères.
+                    Pour cette recherche autour de {searchParams.city}, les prix en France sont similaires ou inférieurs à l'Allemagne.
                   </p>
                 </div>
               )}
@@ -392,24 +509,24 @@ export default function Home() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
               <div style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', borderRadius: '16px', padding: '24px', border: '1px solid #334155', textAlign: 'center' }}>
                 <div style={{ width: '48px', height: '48px', backgroundColor: 'rgba(59, 130, 246, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '24px' }}>
-                  🔍
+                  🇩🇪
                 </div>
-                <h4 style={{ fontWeight: '600', marginBottom: '8px' }}>Recherche temps réel</h4>
-                <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0 }}>Recherche instantanée sur mobile.de et leboncoin</p>
+                <h4 style={{ fontWeight: '600', marginBottom: '8px' }}>Allemagne nationale</h4>
+                <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0 }}>Recherche dans tout le pays pour les meilleurs prix</p>
               </div>
               <div style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', borderRadius: '16px', padding: '24px', border: '1px solid #334155', textAlign: 'center' }}>
                 <div style={{ width: '48px', height: '48px', backgroundColor: 'rgba(34, 197, 94, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '24px' }}>
-                  📉
+                  📍
                 </div>
-                <h4 style={{ fontWeight: '600', marginBottom: '8px' }}>Économies calculées</h4>
-                <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0 }}>Frais d'import inclus dans le calcul</p>
+                <h4 style={{ fontWeight: '600', marginBottom: '8px' }}>France locale</h4>
+                <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0 }}>Comparaison avec les annonces près de chez vous</p>
               </div>
               <div style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', borderRadius: '16px', padding: '24px', border: '1px solid #334155', textAlign: 'center' }}>
                 <div style={{ width: '48px', height: '48px', backgroundColor: 'rgba(168, 85, 247, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '24px' }}>
-                  🔗
+                  💰
                 </div>
-                <h4 style={{ fontWeight: '600', marginBottom: '8px' }}>Liens directs</h4>
-                <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0 }}>Redirection vers les annonces originales</p>
+                <h4 style={{ fontWeight: '600', marginBottom: '8px' }}>Économies réelles</h4>
+                <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0 }}>Frais d'import inclus dans le calcul</p>
               </div>
             </div>
           )}
