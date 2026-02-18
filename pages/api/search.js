@@ -1,5 +1,5 @@
 // pages/api/search.js
-// Scrapers utilisés :
+// Scrapers :
 // - 🇫🇷 scrapifier/leboncoin-universal-scraper
 // - 🇩🇪 3x1t/mobile-de-scraper
 
@@ -18,7 +18,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Lancer les deux recherches en parallèle
     const [deResults, frResults] = await Promise.all([
       searchMobileDe(APIFY_TOKEN, { brand, model, yearMin, yearMax, kmMax, fuel, priceMax }),
       searchLeboncoin(APIFY_TOKEN, { brand, model, yearMin, yearMax, kmMax, fuel, priceMax, city, distance, cityData })
@@ -42,11 +41,8 @@ export default async function handler(req, res) {
 async function searchMobileDe(token, params) {
   const { brand, model, yearMin, yearMax, kmMax, fuel, priceMax } = params;
 
-  // Construire l'URL au format qui fonctionne
   const brandCode = getMobileDeCode(brand);
-  const searchText = encodeURIComponent(`${brand} ${model}`);
   
-  // Format URL mobile.de
   const urlParams = new URLSearchParams({
     dam: 'false',
     isSearchRequest: 'true',
@@ -57,32 +53,12 @@ async function searchMobileDe(token, params) {
     vc: 'Car'
   });
 
-  // Prix max (format :15000)
-  if (priceMax) {
-    urlParams.append('p', `:${priceMax}`);
-  }
+  if (priceMax) urlParams.append('p', `:${priceMax}`);
+  if (kmMax) urlParams.append('ml', `:${kmMax}`);
+  if (yearMin || yearMax) urlParams.append('fr', `${yearMin || ''}:${yearMax || ''}`);
+  if (brandCode) urlParams.append('ms', `${brandCode};;`);
+  if (model) urlParams.append('makeModelVariant1.searchInFreetext', model);
 
-  // Kilométrage max (format :100000)
-  if (kmMax) {
-    urlParams.append('ml', `:${kmMax}`);
-  }
-
-  // Année min-max (format fr:2018:2024)
-  if (yearMin || yearMax) {
-    urlParams.append('fr', `${yearMin || ''}:${yearMax || ''}`);
-  }
-
-  // Marque et modèle (format ms=CODE;;)
-  if (brandCode) {
-    urlParams.append('ms', `${brandCode};;`);
-  }
-
-  // Ajouter recherche texte pour le modèle
-  if (model) {
-    urlParams.append('makeModelVariant1.searchInFreetext', model);
-  }
-
-  // Carburant
   if (fuel && fuel !== 'Tous') {
     const fuelCode = { 'Diesel': 'D', 'Essence': 'B', 'Hybride': 'H', 'Électrique': 'E' }[fuel];
     if (fuelCode) urlParams.append('ft', fuelCode);
@@ -112,7 +88,50 @@ async function searchMobileDe(token, params) {
     const runData = await runResponse.json();
     const results = await waitForResults(token, runData.data.id);
 
-    return parseResults(results, 'mobile.de');
+    // Parser les résultats Mobile.de avec les VRAIS noms de champs
+    return results.map(item => {
+      // Prix : "price.total.amount" est un nombre direct
+      const price = item['price.total.amount'] || 0;
+
+      // Kilométrage : dans attributes.Mileage, format "108,106 km"
+      let km = 0;
+      if (item.attributes && item.attributes.Mileage) {
+        km = parseInt(String(item.attributes.Mileage).replace(/[^0-9]/g, '')) || 0;
+      }
+
+      // Année : dans attributes["First Registration"], format "05/2014"
+      let year = 0;
+      if (item.attributes && item.attributes['First Registration']) {
+        const match = item.attributes['First Registration'].match(/(\d{4})/);
+        if (match) year = parseInt(match[1]);
+      }
+
+      // Carburant : dans attributes.Fuel
+      const fuelType = item.attributes?.Fuel || 'N/A';
+
+      // Localisation : dans dealerDetails.address
+      let location = 'Allemagne';
+      if (item.dealerDetails && item.dealerDetails.address) {
+        // Extraire la ville de l'adresse (format: "Rue, DE-12345 Ville")
+        const addrMatch = item.dealerDetails.address.match(/DE-\d+\s+(.+)$/);
+        if (addrMatch) {
+          location = addrMatch[1];
+        } else {
+          location = item.dealerDetails.address.split(',').pop()?.trim() || 'Allemagne';
+        }
+      }
+
+      return {
+        id: item.url?.match(/id=(\d+)/)?.[1] || Math.random().toString(36).substr(2, 9),
+        title: item.title || `${item.brand || ''} ${item.model || ''}`.trim() || 'Véhicule',
+        price: price,
+        year: year,
+        km: km,
+        fuel: fuelType,
+        url: item.url || 'https://www.mobile.de',
+        city: location
+      };
+    }).filter(car => car.price > 0);
 
   } catch (error) {
     console.error('Erreur mobile.de:', error);
@@ -127,40 +146,24 @@ async function searchMobileDe(token, params) {
 async function searchLeboncoin(token, params) {
   const { brand, model, yearMin, yearMax, kmMax, fuel, priceMax, city, distance, cityData } = params;
 
-  // Format URL leboncoin (testé et validé)
-  const searchText = encodeURIComponent(`${brand} ${model}`);
-  
   const urlParams = new URLSearchParams({
-    category: '2',  // Voitures
+    category: '2',
     text: `${brand} ${model}`
   });
 
-  // Prix max (format price=-10000 ou price=min-max)
-  if (priceMax) {
-    urlParams.append('price', `-${priceMax}`);
-  }
+  if (priceMax) urlParams.append('price', `-${priceMax}`);
+  if (kmMax) urlParams.append('mileage', `-${kmMax}`);
+  if (yearMin || yearMax) urlParams.append('regdate', `${yearMin || ''}-${yearMax || ''}`);
 
-  // Kilométrage max
-  if (kmMax) {
-    urlParams.append('mileage', `-${kmMax}`);
-  }
-
-  // Année (format regdate=min-max)
-  if (yearMin || yearMax) {
-    urlParams.append('regdate', `${yearMin || ''}-${yearMax || ''}`);
-  }
-
-  // Carburant
   if (fuel && fuel !== 'Tous') {
     const fuelCode = { 'Diesel': '2', 'Essence': '1', 'Hybride': '3', 'Électrique': '4' }[fuel];
     if (fuelCode) urlParams.append('fuel', fuelCode);
   }
 
-  // Localisation (ville + rayon)
   if (cityData && cityData.lat && cityData.lng && distance > 0) {
     urlParams.append('lat', cityData.lat.toFixed(5));
     urlParams.append('lng', cityData.lng.toFixed(5));
-    urlParams.append('radius', (distance * 1000).toString()); // en mètres
+    urlParams.append('radius', (distance * 1000).toString());
   }
 
   const searchUrl = `https://www.leboncoin.fr/recherche?${urlParams.toString()}`;
@@ -187,7 +190,43 @@ async function searchLeboncoin(token, params) {
     const runData = await runResponse.json();
     const results = await waitForResults(token, runData.data.id);
 
-    return parseResults(results, 'leboncoin');
+    // Parser les résultats Leboncoin
+    return results.map(item => {
+      // Prix
+      let price = 0;
+      if (item.price) {
+        price = parseInt(String(item.price).replace(/[^0-9]/g, '')) || 0;
+      }
+
+      // Kilométrage
+      let km = 0;
+      const kmValue = item.mileage || item.km || item.attributes?.mileage || item.attributes?.km;
+      if (kmValue) {
+        km = parseInt(String(kmValue).replace(/[^0-9]/g, '')) || 0;
+      }
+
+      // Année
+      let year = 0;
+      const yearValue = item.year || item.regdate || item.attributes?.regdate || item.attributes?.year;
+      if (yearValue) {
+        const match = String(yearValue).match(/20\d{2}|19\d{2}/);
+        if (match) year = parseInt(match[0]);
+      }
+
+      // Localisation
+      const location = item.location || item.city || item.attributes?.location || item.attributes?.city || city || 'France';
+
+      return {
+        id: item.id || Math.random().toString(36).substr(2, 9),
+        title: item.title || item.name || 'Véhicule',
+        price: price,
+        year: year,
+        km: km,
+        fuel: item.fuel || item.attributes?.fuel || 'N/A',
+        url: item.url || item.link || 'https://www.leboncoin.fr',
+        city: location
+      };
+    }).filter(car => car.price > 0);
 
   } catch (error) {
     console.error('Erreur leboncoin:', error);
@@ -234,46 +273,6 @@ async function waitForResults(token, runId, maxWait = 90000) {
 }
 
 // ========================================
-// PARSER LES RÉSULTATS
-// ========================================
-
-function parseResults(items, source) {
-  return items.map(item => {
-    // Extraire le prix (nettoyer les caractères)
-    let price = 0;
-    if (item.price) {
-      price = parseInt(String(item.price).replace(/[^0-9]/g, '')) || 0;
-    }
-
-    // Extraire le kilométrage
-    let km = 0;
-    if (item.mileage || item.km || item.attributes?.mileage) {
-      const kmStr = item.mileage || item.km || item.attributes?.mileage || '0';
-      km = parseInt(String(kmStr).replace(/[^0-9]/g, '')) || 0;
-    }
-
-    // Extraire l'année
-    let year = 0;
-    if (item.year || item.firstRegistration || item.regdate || item.attributes?.regdate) {
-      const yearStr = item.year || item.firstRegistration || item.regdate || item.attributes?.regdate || '';
-      const match = String(yearStr).match(/20\d{2}|19\d{2}/);
-      year = match ? parseInt(match[0]) : 0;
-    }
-
-    return {
-      id: item.id || Math.random().toString(36).substr(2, 9),
-      title: item.title || item.name || 'Véhicule',
-      price: price,
-      year: year,
-      km: km,
-      fuel: item.fuel || item.fuelType || item.attributes?.fuel || 'N/A',
-      url: item.url || item.link || (source === 'mobile.de' ? 'https://www.mobile.de' : 'https://www.leboncoin.fr'),
-      city: item.location || item.city || item.attributes?.location || (source === 'mobile.de' ? 'Allemagne' : 'France')
-    };
-  }).filter(car => car.price > 0);
-}
-
-// ========================================
 // CODES MARQUES MOBILE.DE
 // ========================================
 
@@ -304,7 +303,7 @@ function getMobileDeCode(brand) {
 }
 
 // ========================================
-// DONNÉES DÉMO (FALLBACK)
+// DONNÉES DÉMO
 // ========================================
 
 function getDemoData(brand, model, city) {
@@ -312,12 +311,10 @@ function getDemoData(brand, model, city) {
     de: [
       { id: 'de1', title: `${brand} ${model}`, year: 2019, km: 78000, fuel: 'Diesel', price: 3200, city: 'Berlin', url: 'https://www.mobile.de' },
       { id: 'de2', title: `${brand} ${model}`, year: 2020, km: 65000, fuel: 'Diesel', price: 4100, city: 'Munich', url: 'https://www.mobile.de' },
-      { id: 'de3', title: `${brand} ${model}`, year: 2018, km: 92000, fuel: 'Diesel', price: 2800, city: 'Hamburg', url: 'https://www.mobile.de' },
     ],
     fr: [
       { id: 'fr1', title: `${brand} ${model}`, year: 2019, km: 82000, fuel: 'Diesel', price: 5900, city: city || 'Paris', url: 'https://www.leboncoin.fr' },
       { id: 'fr2', title: `${brand} ${model}`, year: 2020, km: 71000, fuel: 'Diesel', price: 6800, city: city || 'Lyon', url: 'https://www.leboncoin.fr' },
-      { id: 'fr3', title: `${brand} ${model}`, year: 2018, km: 88000, fuel: 'Diesel', price: 5200, city: city || 'Marseille', url: 'https://www.leboncoin.fr' },
     ]
   };
 }
