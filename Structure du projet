@@ -1,8 +1,1 @@
-autoimport-comparator/
-├── pages/
-│   ├── index.js          (page principale)
-│   └── api/
-│       └── search.js     (API qui appelle Apify)
-├── package.json
-├── .env.local            (tes clés secrètes - NE PAS COMMIT)
-└── vercel.json
+
